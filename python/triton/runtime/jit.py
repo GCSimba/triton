@@ -293,7 +293,7 @@ def _normalize_ty(ty) -> str:
         if ty.startswith("tl."):
             return _normalize_ty(ty.removeprefix("tl."))
     elif isinstance(ty, core.pointer_type):
-        return f"*{_normalize_ty(ty.element_ty)}"
+        return f"*{'k' if ty.const else ''}{_normalize_ty(ty.element_ty)}"
     elif isinstance(ty, core.dtype):
         ty = ty.name
     elif isinstance(ty, type):

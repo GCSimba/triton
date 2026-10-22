@@ -1,10 +1,11 @@
 import numpy
 import pytest
 import torch
+import triton
 import triton.language as tl
 from collections import namedtuple
 from triton._C.libtriton import native_specialize_impl
-from triton.runtime.jit import MockTensor, JITCallable
+from triton.runtime.jit import MockTensor, JITCallable, create_function_from_signature, _normalize_ty
 from triton._utils import canonicalize_dtype
 from triton.backends.nvidia.compiler import CUDABackend
 from triton.backends.amd.compiler import HIPBackend
@@ -206,3 +207,26 @@ def test_native_dtype_torch_contract(torch_name, dtype, canonical):
         for value, name in ((storage, "u8"), (native, canonical), (storage, "u8"), (native, canonical)):
             signature, _ = native_specialize_impl(backend, value, False, True, True)
             assert signature == "*" + name
+
+
+@pytest.mark.parametrize("const", [False, True])
+def test_pointer_type_annotation_preserves_const(const):
+
+    @triton.jit
+    def kernel(X: tl.pointer_type(tl.float32, const=const)):
+        pass
+
+    binder = create_function_from_signature(kernel.signature, kernel.params, CUDABackend)
+    _, specialization, _ = binder(MockTensor(tl.float32))
+
+    assert tl.str_to_ty(specialization[0][0], None) == kernel.signature.parameters["X"].annotation
+
+
+@pytest.mark.parametrize("outer_const", [False, True])
+@pytest.mark.parametrize("inner_const", [False, True])
+def test_pointer_type_annotation_preserves_nested_const(outer_const, inner_const):
+    annotation = tl.pointer_type(tl.pointer_type(tl.float32, const=inner_const), const=outer_const)
+
+    resolved = tl.str_to_ty(_normalize_ty(annotation), None)
+
+    assert resolved == annotation
